@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id               Int    @id @default(autoincrement())
+  name             String
+  country          String
+  default_currency String
+
+  users         User[]
+  expenses      Expense[]
+  approvalRules ApprovalRule[]
+}
+
+model User {
+  id            Int    @id @default(autoincrement())
+  name          String
+  email         String @unique
+  password_hash String
+  role          Role
+  company_id    Int
+  manager_id    Int?
+
+  company      Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  manager      User?   @relation("ManagerRelation", fields: [manager_id], references: [id], onDelete: SetNull)
+  subordinates User[]  @relation("ManagerRelation")
+
+  expenses  Expense[]
+  approvals Approval[]
+
+  // Fix: Opposite relation for ApprovalRule.specific_approver
+  approvalRulesSpecific ApprovalRule[] @relation("SpecificApprover")
+}
+
+model Expense {
+  id          Int           @id @default(autoincrement())
+  employee_id Int
+  company_id  Int
+  amount      Decimal       @db.Decimal(12, 2)
+  currency    String
+  category    String
+  description String?
+  date        DateTime
+  status      ExpenseStatus @default(Pending)
+
+  employee User    @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  company  Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  approvals Approval[]
+  receipts  Receipt[]
+}
+
+model Approval {
+  id          Int            @id @default(autoincrement())
+  expense_id  Int
+  approver_id Int
+  status      ApprovalStatus @default(Pending)
+  comment     String?
+  step_order  Int
+  decided_at  DateTime?
+
+  expense  Expense @relation(fields: [expense_id], references: [id], onDelete: Cascade)
+  approver User    @relation(fields: [approver_id], references: [id], onDelete: Cascade)
+}
+
+model ApprovalRule {
+  id                   Int      @id @default(autoincrement())
+  company_id           Int
+  rule_type            RuleType
+  threshold_value      Decimal? @db.Decimal(5, 2)
+  specific_approver_id Int?
+
+  description String?
+
+  company           Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  specific_approver User?   @relation("SpecificApprover", fields: [specific_approver_id], references: [id])
+}
+
+model Receipt {
+  id          Int    @id @default(autoincrement())
+  expense_id  Int
+  file_url    String
+  parsed_data Json
+
+  expense Expense @relation(fields: [expense_id], references: [id], onDelete: Cascade)
+}
+
+enum Role {
+  Admin
+  Manager
+  Employee
+}
+
+enum ExpenseStatus {
+  Pending
+  Approved
+  Rejected
+}
+
+enum ApprovalStatus {
+  Pending
+  Approved
+  Rejected
+}
+
+enum RuleType {
+  percentage
+  specific
+  hybrid
+}
